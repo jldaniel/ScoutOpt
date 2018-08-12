@@ -76,7 +76,7 @@ class Scout(object):
 
             # Update the model with the new point
             x_train = np.append(x_train, sample, axis=0)
-            y_train = np.append(y_train, y_cur, axis=0)
+            y_train = np.vstack([y_train, y_cur])
             surrogate = surrogate.fit(x_train, y_train)
             self.results.surrogates.append(surrogate)
 
