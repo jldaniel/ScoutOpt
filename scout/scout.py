@@ -4,9 +4,9 @@ import logging
 import numpy as np
 from scipy.optimize import differential_evolution
 
-
-from .surrogate import Surrogate
+from .results import OptimizationResults
 from .doe import mixed_doe
+from .surrogate import Surrogate
 
 
 # TODO Feature: Add ability to supply initial training set
@@ -23,6 +23,7 @@ class Scout(object):
         self.exploration_factor = 10.0
         self.training_ratio = 0.1
         self.seed = seed
+        self.results = OptimizationResults()
 
         if not logger:
             self.logger = logging.getLogger(__name__)
@@ -41,13 +42,19 @@ class Scout(object):
         x_train = mixed_doe(n_training_points, self.bounds, seed=self.seed)
         y_train = np.apply_along_axis(self.fun, 1, x_train)
 
+        self.results.x_train = x_train
+        self.results.y_train = y_train
+
         # Generate the initial surrogate
         surrogate = Surrogate().fit(x_train, y_train)
+        self.results.surrogates.append(surrogate)
 
         # Get the current best design
         best_index = np.argmin(y_train)
         x_best = x_train[best_index]
         y_best = y_train[best_index]
+
+        self.results.update_best(x_best, y_best)
 
         # Start the main optimization loop
         current_evaluation = len(x_train)
@@ -56,6 +63,7 @@ class Scout(object):
             # Get the next sample
             exploration_parameter = (-1./np.power(evaluation_budget, 3.))*np.power(current_evaluation, 3.) + 1
             exploration_parameter = self.exploration_factor*exploration_parameter
+            self.results.exploration_parameter_history.append(exploration_parameter)
             sample = self.get_next_sample(surrogate, self.bounds, exploration_parameter)
 
             y_cur = self.fun(sample)
@@ -64,14 +72,17 @@ class Scout(object):
                 x_best = sample
                 y_best = y_cur
 
+            self.results.update_best(x_best, y_best)
+
             # Update the model with the new point
             x_train = np.append(x_train, sample, axis=0)
             y_train = np.append(y_train, y_cur, axis=0)
             surrogate = surrogate.fit(x_train, y_train)
+            self.results.surrogates.append(surrogate)
 
             current_evaluation += 1
 
-        return x_best, y_best
+        return self.results
 
     @staticmethod
     def get_next_sample(surrogate, bounds, exploration_parameter, maximize=False):
@@ -103,7 +114,5 @@ class Scout(object):
         std_dev = std_dev.reshape(-1, 1)
 
         return mean + exploration_parameter*std_dev
-
-
 
 
